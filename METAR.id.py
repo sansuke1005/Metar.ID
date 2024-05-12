@@ -17,7 +17,7 @@ import squroute
 load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.5.0-beta"
+version = "v0.5.1-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
@@ -28,11 +28,16 @@ airlines = {}
 fixnames = {}
 
 jumbo_mode = False
+color_mode = 0
 args = sys.argv
-if len(args) == 2:
-    if args[1] == "-jumbo":
+for arg in args:
+    if arg == "-jumbo":
         jumbo_mode = True
         text_width = [34,32,40,24,45]
+    if arg == "-dark":
+        color_mode = 1
+    if arg == "-light":
+        color_mode = 2
 
 def check_version():
     try:
@@ -172,6 +177,13 @@ def chekIMC(metar):
 
     if "NIL" in metar_split[2]:
         return False
+    
+    if "TEMPO" in metar_split:
+        metar_split = metar_split[:metar_split.index("TEMPO")]
+    
+    if "BECMG" in metar_split:
+        metar_split = metar_split[:metar_split.index("BECMG")]
+
 
     for s in metar_split:
         if s.isdecimal():
@@ -687,8 +699,11 @@ class TodoApp(UserControl):
         e.control.update()
 
 def main(page: Page):
-    page.title = "METAR.id"
-    #page.theme_mode = "LIGHT"
+    page.title = "Metar.ID"
+    if color_mode == 1:
+        page.theme_mode = "DARK"
+    if color_mode == 2:
+        page.theme_mode = "LIGHT"
     page.window_width = 300
     page.window_height = 395
     page.window_min_width = 300
