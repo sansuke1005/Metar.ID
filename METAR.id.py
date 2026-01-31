@@ -17,7 +17,7 @@ import squroute
 load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.5.2-beta"
+version = "v0.5.3-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
