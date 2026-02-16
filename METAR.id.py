@@ -17,7 +17,7 @@ import squroute
 load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.5.4-beta"
+version = "v0.5.5-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
@@ -318,8 +318,6 @@ class Task(UserControl):
         self.task_delete = task_delete
         self.task_clicked = task_clicked
         self.sortedMetar = sortedMetar
-
-    def build(self):
         if self.task_name in metars.keys():
             return Column()
         self.thread_getIAP = NewThread(target=get_tt_IAP)
@@ -338,6 +336,8 @@ class Task(UserControl):
             self.recommendRWY = [self.thread_getIAP.join(),2]
         else:
             self.recommendRWY = getRecommendRWY(self.metar_short[0],self.metar_short)
+
+    def build(self):
         self.textStyleQNH = TextStyle(
                                         decoration_thickness = 2,
                                         decoration_color=colors.GREY_600,
@@ -479,6 +479,7 @@ class TodoApp(UserControl):
     def __init__(self, window_on_top):
         super().__init__()
         self.window_on_top = window_on_top
+        self.selected_ap = ""
 
     def build(self):
         self.new_task = TextField(
@@ -618,7 +619,7 @@ class TodoApp(UserControl):
         info = autoSelector(self.new_task.value)
         if info[1] == "METAR":
             task = Task(self.new_task.value, self.task_delete, self.task_clicked, [])
-            self.task_clicked(None, getAiportName(task.task_name)+"\n"+info[0], info[1],"")
+            self.task_clicked(task, getAiportName(task.task_name)+"\n"+info[0], info[1],"")
             self.tasks.controls.append(task)
             self.tasks.scroll_to(offset=-1, duration=500)
         elif info[1] == "CLEAR":
@@ -652,6 +653,8 @@ class TodoApp(UserControl):
         self.info.value = new_info
         self.info.label = info_label
         self.info_text.text = text
+        if task is not None:
+            self.selected_ap = task.task_name
         if info_label is None:
             self.info_text.url = ""
         else:
@@ -668,6 +671,10 @@ class TodoApp(UserControl):
             for key in metars_copy:
                 new_task = Task(key, self.task_delete, self.task_clicked, [])
                 self.tasks.controls.append(new_task)
+                if self.info.label == "METAR" and self.selected_ap == key:
+                    self.task_clicked(new_task, getAiportName(key)+"\n"+metars[key], "METAR","")
+            
+
         self.pb.value = 0
         self.update()
 
