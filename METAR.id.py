@@ -17,7 +17,7 @@ import squroute
 load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.5.5-beta"
+version = "v0.5.6-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
@@ -468,7 +468,7 @@ class Task(UserControl):
         return Column(controls=[self.display_view],spacing=0,)
     
     def container_clicked(self, e):
-        self.task_clicked(self,getAiportName(self.task_name)+"\n"+metars[self.task_name],"METAR","")
+        self.task_clicked(self,getAiportName(self.task_name)+"\n"+metars[self.task_name],"METAR","", True)
 
     def delete_clicked(self, e):
         metars.pop(self.task_name)
@@ -619,14 +619,14 @@ class TodoApp(UserControl):
         info = autoSelector(self.new_task.value)
         if info[1] == "METAR":
             task = Task(self.new_task.value, self.task_delete, self.task_clicked, [])
-            self.task_clicked(task, getAiportName(task.task_name)+"\n"+info[0], info[1],"")
+            self.task_clicked(task, getAiportName(task.task_name)+"\n"+info[0], info[1], "", True)
             self.tasks.controls.append(task)
             self.tasks.scroll_to(offset=-1, duration=500)
         elif info[1] == "CLEAR":
             self.tasks.controls = []
             metars.clear()
         else:
-            self.task_clicked(None, info[0], info[1],info[2])
+            self.task_clicked(None, info[0], info[1],info[2], True)
         self.new_task.value = ""
         self.pb.value = 0
         self.new_task.focus()
@@ -649,7 +649,7 @@ class TodoApp(UserControl):
         self.tasks.controls.remove(task)
         self.update()
 
-    def task_clicked(self, task, new_info, info_label, text):
+    def task_clicked(self, task, new_info, info_label, text, update):
         self.info.value = new_info
         self.info.label = info_label
         self.info_text.text = text
@@ -659,7 +659,8 @@ class TodoApp(UserControl):
             self.info_text.url = ""
         else:
             self.info_text.url = squroute.get_url()+"?from={}&to={}".format(info_label[0:4],info_label[5:9])
-        self.update()
+        if update:
+            self.update()
 
     def reload_clicked(self, e):
         self.pb.value = None
@@ -672,7 +673,7 @@ class TodoApp(UserControl):
                 new_task = Task(key, self.task_delete, self.task_clicked, [])
                 self.tasks.controls.append(new_task)
                 if self.info.label == "METAR" and self.selected_ap == key:
-                    self.task_clicked(new_task, getAiportName(key)+"\n"+metars[key], "METAR","")
+                    self.task_clicked(new_task, getAiportName(key)+"\n"+metars[key], "METAR", "", False)
             
 
         self.pb.value = 0
