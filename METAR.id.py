@@ -1,5 +1,6 @@
 import flet
 from flet import *
+from horizontal_splitter import HorizontalSplitter, FixedPaneH
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
@@ -17,7 +18,7 @@ import squroute
 load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.5.6-beta"
+version = "v0.6.0-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
@@ -243,25 +244,29 @@ def get_fix_name(s):
     return s + "\n" + fixname
 
 def get_route(s):
-    routes = squroute.get_route(s.split(" ")[0],s.split(" ")[1])
-    route = routes[0]
-    if route == "ERROR":
+    result = squroute.get_route(s.split(" ")[0],s.split(" ")[1])
+    if result[2] == 0:
         return ["Not Found","",""]
     
-    if route[2] == "" and route[1] == "":
-        route_info = "{}".format(route[0])
-    if route[2] == "" and route[1] != "":
-        route_info = "{}\n({})".format(route[0],route[1])
-    if route[2] != "" and route[1] == "":
-        route_info = "{}\n({})".format(route[0],route[2])
-    if route[2] != "" and route[1] != "":
-        route_info = "{}\n({}, {})".format(route[0],route[2],route[1])
+    info_list = []
+    for route in result[0]:
+        if result[2] > 1:
+            route_info = "----------- {}/{} -----------\n".format(result[0].index(route)+1,result[2])
+        else:
+            route_info = ""
+        if route[2] == "" and route[1] == "":
+            route_info += ("{}".format(route[0]))
+        if route[2] == "" and route[1] != "":
+            route_info += ("{}\n({})".format(route[0],route[1]))
+        if route[2] != "" and route[1] == "":
+            route_info += ("{}\n({})".format(route[0],route[2]))
+        if route[2] != "" and route[1] != "":
+            route_info += ("{}\n({}, {})".format(route[0],route[2],route[1]))
+        
+        info_list.append(route_info)
+        
     
-    if routes[2]-1 == 0:
-        return [route_info,routes[1],""]
-    if routes[2]-1 == 1:
-        return [route_info,routes[1],"more {} route".format(str(routes[2]-1))]
-    return [route_info,routes[1],"more {} routes".format(str(routes[2]-1))]
+    return ["\n\n".join(info_list), result[1], ""]
 
 def autoSelector(s):
     if len(s.split(" "))==2:
@@ -318,8 +323,6 @@ class Task(UserControl):
         self.task_delete = task_delete
         self.task_clicked = task_clicked
         self.sortedMetar = sortedMetar
-        if self.task_name in metars.keys():
-            return Column()
         self.thread_getIAP = NewThread(target=get_tt_IAP)
         if self.task_name == "RJTT":
             self.thread_getIAP.start()
@@ -498,8 +501,7 @@ class TodoApp(UserControl):
             multiline=True,
             read_only=True,
             value="",
-            min_lines=4,
-            max_lines=4,
+            min_lines=100,
             content_padding= 5,
             border_color = colors.OUTLINE_VARIANT,
             focused_border_color = colors.OUTLINE_VARIANT,
@@ -508,24 +510,7 @@ class TodoApp(UserControl):
             label_style = TextStyle(
                 size = 13,
                 color = colors.OUTLINE_VARIANT,
-            )
-        )
-        self.info = TextField(
-            text_size=13,
-            multiline=True,
-            read_only=True,
-            value="",
-            min_lines=4,
-            max_lines=4,
-            content_padding= 5,
-            border_color = colors.OUTLINE_VARIANT,
-            focused_border_color = colors.OUTLINE_VARIANT,
-            focused_border_width = 1,
-            label=None,
-            label_style = TextStyle(
-                size = 13,
-                color = colors.OUTLINE_VARIANT,
-            )
+            ),
         )
         self.info_text = TextSpan(
             text ="",
@@ -544,15 +529,29 @@ class TodoApp(UserControl):
                                 self.info_text,
                                 ],
                             size=13,
+                            
                         ),
                         right=3,
                         bottom=3,
                     ),
-                ]),
+                ],
+                expand=True,
+                ),
             self.pb,
             ],
             spacing=2,
+            expand=True,
             
+        )
+
+        self.splitter = HorizontalSplitter(
+            top_pane=self.tasks,
+            bottom_pane=self.info_box,
+            fixed_pane=FixedPaneH.BOTTOM,
+            fixed_pane_height=95,
+            fixed_pane_min_height=95,
+            fixed_pane_max_height=1000,
+            expand=True,
         )
 
         self.t = CustomThread1(self.reload_clicked)
@@ -600,13 +599,7 @@ class TodoApp(UserControl):
                         
                     ],
                 ),
-                Container(
-                    self.tasks,
-                    expand=True,
-                ),
-                Container(
-                    self.info_box,
-                ),
+                self.splitter,
             ],
             spacing=5,
         )
@@ -618,9 +611,14 @@ class TodoApp(UserControl):
         self.update()
         info = autoSelector(self.new_task.value)
         if info[1] == "METAR":
-            task = Task(self.new_task.value, self.task_delete, self.task_clicked, [])
+            for t in self.tasks.controls:
+                if t.task_name == codeConvert(self.new_task.value): #すでに存在するなら
+                    task = t
+                    break
+            else: #新規
+                task = Task(self.new_task.value, self.task_delete, self.task_clicked, [])
+                self.tasks.controls.append(task)
             self.task_clicked(task, getAiportName(task.task_name)+"\n"+info[0], info[1], "", True)
-            self.tasks.controls.append(task)
             self.tasks.scroll_to(offset=-1, duration=500)
         elif info[1] == "CLEAR":
             self.tasks.controls = []
