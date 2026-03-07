@@ -3,22 +3,19 @@ from flet import *
 from horizontal_splitter import HorizontalSplitter, FixedPaneH
 import requests
 from requests.exceptions import RequestException
-from bs4 import BeautifulSoup
 import math
 import webbrowser
-import re
-import unicodedata
 import threading
 import time
 import os
 import sys
 import apptype
 import squroute
+import metar
 
-load_url = "https://www.imoc.co.jp/SmartPhone/d/metar.php"
 metars = {}
-specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","SOURCE","METAR.ID"]
-version = "v0.6.0-beta"
+specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","METAR.ID"]
+version = "v0.7.0-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [34,40,48,40,45]
@@ -86,25 +83,6 @@ def load_text_file():
                     fixnames[dataList[0]]=dataList[2]
     return ""
 
-
-def getMetar(port):
-    if len(port)==1:
-        port = "RJ" + port + port
-    elif len(port)==2:
-        port = "RJ" + port
-    params = {'Area': '0', 'Port': port}
-    html = requests.get(load_url, params=params)
-    soup = BeautifulSoup(html.content, "html.parser")
-    lines = soup.find("ul").text
-    lines_list = re.sub("\n +", " ", lines).split("\n")
-    for s in lines_list:
-        if len(s) > 15:
-            if "NIL" not in s:
-                if s[:5] == "METAR":
-                    return s[6:]
-                return s
-    return "Error"
-
 def codeConvert(port):
     if len(port)==1:
         return "RJ" + port + port
@@ -117,7 +95,10 @@ def codeConvert(port):
 def metar_summary(s):
     if s == "Error":
         return "Error"
+    s = s.replace("/"," ") #QNH用
     metar_split = s.split(" ")
+    if metar_split[1] == "M" or metar_split[1] == "S" or metar_split[1] == "MS":
+        del metar_split[1]
     if metar_split[2] == "AUTO" or metar_split[2] == "COR":
         del metar_split[2]
     if "NIL" in metar_split[2]:
@@ -232,8 +213,6 @@ def special(s):
     if s == specialKey[5]:
         webbrowser.open("https://squawk.id/", new=0, autoraise=True)
     if s == specialKey[6]:
-        webbrowser.open(load_url, new=0, autoraise=True)
-    if s == specialKey[7]:
         webbrowser.open("https://github.com/sansuke1005/METAR.id", new=0, autoraise=True)
     return ""    
 
@@ -284,18 +263,18 @@ def autoSelector(s):
     if len(s)==1:
         port = "RJ"+s+s
         if port in RWYData.keys():
-            return [getMetar(port),"METAR",""]
+            return [metar.get(port),"METAR",""]
     if len(s)==2:
         port = "RJ"+s
         if port in RWYData.keys():
-            return [getMetar(port),"METAR",""]
+            return [metar.get(port),"METAR",""]
     if len(s)==3 and s[0] == "O":
         port = "R"+s
         if port in RWYData.keys():
-            return [getMetar(port),"METAR",""]
+            return [metar.get(port),"METAR",""]
     if s[:2] == "RJ" or s[:2] == "RO":
         if s in RWYData.keys():
-            return [getMetar(s),"METAR",""]
+            return [metar.get(s),"METAR",""]
     if get_fix_name(s) != None:
         return [get_fix_name(s),"Fix",""]
     if getAircraft(s) != None:
@@ -327,7 +306,7 @@ class Task(UserControl):
         if self.task_name == "RJTT":
             self.thread_getIAP.start()
         if len(self.sortedMetar) == 0:
-            self.metar = getMetar(self.task_name)
+            self.metar = metar.get(self.task_name)
         else:
             self.metar = self.sortedMetar
         self.metar_short = metar_summary(self.metar).split(" ")
@@ -631,17 +610,9 @@ class TodoApp(UserControl):
         self.update()
 
 
-    def check_alnum(self,e):
-        if re.compile("[a-zA-Z0-9]+").match(self.new_task.value):
-            hankaku=True
-            for c in self.new_task.value:
-                if not unicodedata.east_asian_width(c) == "Na":
-                    hankaku=False
-            if hankaku==True:
-                self.new_task.value = self.new_task.value.upper()
-                self.update()
-            
-
+    def check_alnum(self, e):
+        self.new_task.value = self.new_task.value.upper()
+        self.update()
 
     def task_delete(self, task):
         self.tasks.controls.remove(task)
