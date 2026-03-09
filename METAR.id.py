@@ -9,21 +9,23 @@ import threading
 import time
 import os
 import sys
-import apptype
 import squroute
-import metar
+from data_source import DataSource
+import re
 
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","METAR.ID"]
-version = "v0.7.0-beta"
+version = "v0.7.1-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
-text_width = [34,40,48,40,45]
+text_width = [33,12,40,48,40,45]
 
 RWYData = {}
 aircrafts = {}
 airlines = {}
 fixnames = {}
+
+data_source = DataSource()
 
 jumbo_mode = False
 color_mode = 0
@@ -31,7 +33,7 @@ args = sys.argv
 for arg in args:
     if arg == "-jumbo":
         jumbo_mode = True
-        text_width = [34,32,40,24,45]
+        text_width = [33,10,32,40,24,45]
     if arg == "-dark":
         color_mode = 1
     if arg == "-light":
@@ -97,7 +99,7 @@ def metar_summary(s):
         return "Error"
     s = s.replace("/"," ") #QNH用
     metar_split = s.split(" ")
-    if metar_split[1] == "M" or metar_split[1] == "S" or metar_split[1] == "MS":
+    if metar_split[1] in ["M", "S", "MS", "Q", "A"]:
         del metar_split[1]
     if metar_split[2] == "AUTO" or metar_split[2] == "COR":
         del metar_split[2]
@@ -126,8 +128,14 @@ def getAiportName(port):
     airportName = RWYData[port][4] + " ("+RWYData[port][5]+")"
     return airportName
 
-def get_tt_IAP():
-    return apptype.get_rjtt_app()
+def get_IAP(ap):
+    success = data_source.update(ap)
+    if success == False:
+        return None
+    usg_rwy = data_source.get_usg_rwy()
+    if usg_rwy is None:
+        return None
+    return "\n".join(usg_rwy)
 
 def getRecommendRWY(port, metar_short):
     priy_rwy = RWYData[port][0]
@@ -168,14 +176,17 @@ def chekIMC(metar):
 
 
     for s in metar_split:
-        if s.isdecimal():
-            if int(s) < 5000:
+        m = re.match(r"^(\d{4})M?$", s)
+        if m:
+            vis = int(m.group(1))
+            if vis < 5000:
                 return True
+        
 
     for s in metar_split:
         if "BKN" in s or "OVC" in s :
-            if s[3:].isdecimal():
-                if int(s[3:]) < 10:
+            if s[3:6].isdecimal():
+                if int(s[3:6]) < 10:
                     return True
     return False
 
@@ -209,7 +220,7 @@ def special(s):
     if s == specialKey[3]:
         webbrowser.open("https://x.com/sansuke1005", new=0, autoraise=True)
     if s == specialKey[4]:
-        webbrowser.open("https://vatjpn.org/document/public/crc/78/171", new=0, autoraise=True)
+        webbrowser.open("https://vatjpn.org/document/public/om/sop/transfer-point-and-alt", new=0, autoraise=True)
     if s == specialKey[5]:
         webbrowser.open("https://squawk.id/", new=0, autoraise=True)
     if s == specialKey[6]:
@@ -258,23 +269,34 @@ def autoSelector(s):
     if s.isdecimal() and (len(s)==6 or len(s)==7):
         webbrowser.open("https://stats.vatsim.net/stats/"+s, new=0, autoraise=True)
         return ["",None,""]
-    if s == "HND":
-        return [apptype.get_rjtt_app_all(),"RJTT INFO",""]
+    if s[0] == "@":
+        ap = codeConvert(s[1:])
+        if get_IAP(ap) is not None:
+            return [get_IAP(ap),"APCH TYPE",""]
+
     if len(s)==1:
         port = "RJ"+s+s
         if port in RWYData.keys():
-            return [metar.get(port),"METAR",""]
+            success = data_source.update(port)
+            if success:
+                return [data_source.get_metar(),"METAR",""]
     if len(s)==2:
         port = "RJ"+s
         if port in RWYData.keys():
-            return [metar.get(port),"METAR",""]
+            success = data_source.update(port)
+            if success:
+                return [data_source.get_metar(),"METAR",""]
     if len(s)==3 and s[0] == "O":
         port = "R"+s
         if port in RWYData.keys():
-            return [metar.get(port),"METAR",""]
+            success = data_source.update(port)
+            if success:
+                return [data_source.get_metar(),"METAR",""]
     if s[:2] == "RJ" or s[:2] == "RO":
         if s in RWYData.keys():
-            return [metar.get(s),"METAR",""]
+            success = data_source.update(s)
+            if success:
+                return [data_source.get_metar(),"METAR",""]
     if get_fix_name(s) != None:
         return [get_fix_name(s),"Fix",""]
     if getAircraft(s) != None:
@@ -283,18 +305,6 @@ def autoSelector(s):
         return [getAirline(s),"Airline",""]
     return ["Error",None,""]
 
-class NewThread(threading.Thread):
-    def __init__(self, group=None, target=None, name=None, args=(), kwargs={}):
-        threading.Thread.__init__(self, group, target, name, args, kwargs)
-
-    def run(self):
-        if self._target != None:
-            self._return = self._target(*self._args, **self._kwargs)
-
-    def join(self, *args):
-        threading.Thread.join(self, *args)
-        return self._return
-
 class Task(UserControl):
     def __init__(self, task_name, task_delete, task_clicked, sortedMetar):
         super().__init__()
@@ -302,11 +312,8 @@ class Task(UserControl):
         self.task_delete = task_delete
         self.task_clicked = task_clicked
         self.sortedMetar = sortedMetar
-        self.thread_getIAP = NewThread(target=get_tt_IAP)
-        if self.task_name == "RJTT":
-            self.thread_getIAP.start()
         if len(self.sortedMetar) == 0:
-            self.metar = metar.get(self.task_name)
+            self.metar = data_source.get_metar()
         else:
             self.metar = self.sortedMetar
         self.metar_short = metar_summary(self.metar).split(" ")
@@ -314,10 +321,15 @@ class Task(UserControl):
             return Column()
         metars[self.task_name]=self.metar
 
-        if self.task_name == "RJTT":
-            self.recommendRWY = [self.thread_getIAP.join(),2]
+        #IAPの取得
+        iap_alias = data_source.get_alias()
+
+        if iap_alias is not None:
+            self.recommendRWY = [iap_alias,2]
         else:
             self.recommendRWY = getRecommendRWY(self.metar_short[0],self.metar_short)
+
+        self.atis_code = data_source.get_atis_code()
 
     def build(self):
         self.textStyleQNH = TextStyle(
@@ -370,12 +382,27 @@ class Task(UserControl):
                                     self.metar_code,
                                     ),
                                 ],
-                            text_align = TextAlign.CENTER,
+                            text_align = TextAlign.LEFT,
                             size=13,
                             no_wrap=True,
                             overflow=TextOverflow.VISIBLE,
                         ),
                         width=text_width[0],
+                    ),
+                    Container(
+                        Text(
+                            spans=[
+                                TextSpan(
+                                        self.atis_code,
+                                    ),
+                                ],
+                            text_align = TextAlign.CENTER,
+                            size=13,
+                            no_wrap=True,
+                            overflow=TextOverflow.VISIBLE,
+                            color = colors.PRIMARY
+                        ),
+                        width=text_width[1],
                     ),
                     Container(
                         Text(
@@ -389,7 +416,7 @@ class Task(UserControl):
                             no_wrap=True,
                             overflow=TextOverflow.VISIBLE,
                         ),
-                        width=text_width[1],
+                        width=text_width[2],
                     ),
                     Container(
                         Text(
@@ -403,7 +430,7 @@ class Task(UserControl):
                             no_wrap=True,
                             overflow=TextOverflow.VISIBLE,
                         ),
-                        width=text_width[2],
+                        width=text_width[3],
                     ),
                     Container(
                         Text(
@@ -417,11 +444,11 @@ class Task(UserControl):
                                 no_wrap=True,
                                 overflow=TextOverflow.VISIBLE,
                             ),
-                        width=text_width[3],
+                        width=text_width[4],
                     ),
                     Container(
                         self.textRWY,
-                        width=text_width[4],
+                        width=text_width[5],
                     ),
 
                     IconButton(
@@ -499,28 +526,30 @@ class TodoApp(UserControl):
             on_exit=self.unhighlight_link,
         )
         self.pb = ProgressBar(color=colors.PRIMARY, bgcolor=colors.BACKGROUND, value=0,bar_height=3)
-        self.info_box = Column([
-            Stack([
-                    self.info,
-                    Container(
-                        Text(
-                            spans=[
-                                self.info_text,
-                                ],
-                            size=13,
-                            
+        self.info_box = Container(
+            Column([
+                Stack([
+                        self.info,
+                        Container(
+                            Text(
+                                spans=[
+                                    self.info_text,
+                                    ],
+                                size=13,
+                                
+                            ),
+                            right=3,
+                            bottom=3,
                         ),
-                        right=3,
-                        bottom=3,
+                    ],
+                    expand=True,
                     ),
+                self.pb,
                 ],
+                spacing=2,
                 expand=True,
-                ),
-            self.pb,
-            ],
-            spacing=2,
-            expand=True,
-            
+            ),
+            bgcolor= colors.BACKGROUND,
         )
 
         self.splitter = HorizontalSplitter(
@@ -639,6 +668,7 @@ class TodoApp(UserControl):
             metars_copy = metars.copy()
             metars.clear()
             for key in metars_copy:
+                data_source.update(key)
                 new_task = Task(key, self.task_delete, self.task_clicked, [])
                 self.tasks.controls.append(new_task)
                 if self.info.label == "METAR" and self.selected_ap == key:
@@ -657,6 +687,7 @@ class TodoApp(UserControl):
             metars_sort = dict((x, y) for x, y in metars_sort)
             metars.clear()
             for key in metars_sort:
+                data_source.update(key)
                 new_task = Task(key, self.task_delete, self.task_clicked, metars_sort[key])
                 self.tasks.controls.append(new_task)
         self.pb.value = 0
@@ -681,9 +712,9 @@ def main(page: Page):
         page.theme_mode = "DARK"
     if color_mode == 2:
         page.theme_mode = "LIGHT"
-    page.window_width = 300
+    page.window_width = 310
     page.window_height = 395
-    page.window_min_width = 300
+    page.window_min_width = 310
     page.window_min_height = 216
     page.window_maximizable = False
     #page.window_resizable = False
