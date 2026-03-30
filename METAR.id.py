@@ -15,7 +15,7 @@ import re
 
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","METAR.ID"]
-version = "v0.7.1-beta"
+version = "v0.7.2-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [33,12,40,48,40,45]
@@ -95,7 +95,7 @@ def codeConvert(port):
     return port
 
 def metar_summary(s):
-    if s == "Error":
+    if s == "Error" or s is None:
         return "Error"
     s = s.replace("/"," ") #QNH用
     metar_split = s.split(" ")
@@ -615,6 +615,9 @@ class TodoApp(UserControl):
     
 
     def add_clicked(self, e):
+        if self.new_task.value == "":
+            self.new_task.focus()
+            return
         self.pb.value = None
         self.update()
         info = autoSelector(self.new_task.value)
