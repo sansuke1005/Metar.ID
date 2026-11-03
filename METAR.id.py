@@ -15,7 +15,7 @@ import re
 
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","METAR.ID"]
-version = "v0.7.3-beta"
+version = "v0.8.0-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [33,12,40,48,40,45]
@@ -23,9 +23,12 @@ text_width = [33,12,40,48,40,45]
 RWYData = {}
 aircrafts = {}
 airlines = {}
-fixnames = {}
+fixinfos = squroute.get_fix_info()
 
 data_source = DataSource()
+
+vatsim_online = data_source.get_vatsim_online()
+
 
 jumbo_mode = False
 color_mode = 0
@@ -75,14 +78,6 @@ def load_text_file():
             dataList = data.split(",")
             if not dataList[0] in airlines.keys():
                 airlines[dataList[0]]=[dataList[1],dataList[2],dataList[3],dataList[4].strip()]
-    if os.path.isfile(os.path.join(filepath, "FIXNAMES.txt")):
-        with open(os.path.join(filepath, "FIXNAMES.txt")) as f:
-            flines = f.readlines()
-            del flines[0]
-            for data in flines:
-                dataList = data.split(",")
-                if not dataList[0] in fixnames.keys():
-                    fixnames[dataList[0]]=dataList[2]
     return ""
 
 def codeConvert(port):
@@ -227,11 +222,13 @@ def special(s):
         webbrowser.open("https://github.com/sansuke1005/METAR.id", new=0, autoraise=True)
     return ""    
 
-def get_fix_name(s):
-    if s not in fixnames.keys():
+def get_fix_info(s):
+    if s not in fixinfos.keys():
         return None
-    fixname = "Name: " + fixnames[s]
-    return s + "\n" + fixname
+    fix_info = fixinfos[s]
+    name = "Name: " + fix_info["name"]
+    routes = "Routes: " + fix_info["routes"]
+    return s + "\n" + name + "\n" + routes
 
 def get_route(s):
     result = squroute.get_route(s.split(" ")[0],s.split(" ")[1])
@@ -259,6 +256,9 @@ def get_route(s):
     return ["\n\n".join(info_list), result[1], ""]
 
 def autoSelector(s):
+    if s in vatsim_online:
+        route_info = squroute.get_route_info(s)
+        return [route_info,s,""]
     if len(s.split(" "))==2:
         get_routes = get_route(s)
         return [get_routes[0],get_routes[1],get_routes[2]]
@@ -297,8 +297,8 @@ def autoSelector(s):
             success = data_source.update(s)
             if success:
                 return [data_source.get_metar(),"METAR",""]
-    if get_fix_name(s) != None:
-        return [get_fix_name(s),"Fix",""]
+    if get_fix_info(s) != None:
+        return [get_fix_info(s),"Fix",""]
     if getAircraft(s) != None:
         return [getAircraft(s),"Aircraft",""]
     if getAirline(s) != None:
@@ -670,6 +670,7 @@ class TodoApp(UserControl):
             self.tasks.controls = []
             metars_copy = metars.copy()
             metars.clear()
+            vatsim_online = data_source.get_vatsim_online()
             for key in metars_copy:
                 data_source.update(key)
                 new_task = Task(key, self.task_delete, self.task_clicked, [])
