@@ -15,7 +15,7 @@ import re
 
 metars = {}
 specialKey = ["VERSION","VATSIM","VATJPN","SANSUKE","TEMP","SQUAWK.ID","METAR.ID"]
-version = "v0.8.0-beta"
+version = "v0.8.1-beta"
 filepath = os.path.dirname(os.path.abspath(sys.argv[0]))
 textFiles = ["RWYData.txt","AIRCRAFT.txt","AIRLINES.txt"]
 text_width = [33,12,40,48,40,45]
@@ -26,9 +26,6 @@ airlines = {}
 fixinfos = squroute.get_fix_info()
 
 data_source = DataSource()
-
-vatsim_online = data_source.get_vatsim_online()
-
 
 jumbo_mode = False
 color_mode = 0
@@ -256,9 +253,16 @@ def get_route(s):
     return ["\n\n".join(info_list), result[1], ""]
 
 def autoSelector(s):
-    if s in vatsim_online:
+    if s in data_source.get_vatsim_online():
         route_info = squroute.get_route_info(s)
-        return [route_info,s,""]
+        flight = data_source.get_vatsim_flight(s)
+        if flight["fpl"]:
+            dep = flight["dep"]
+            arr = flight["arr"]
+            title = "{} {}-{}".format(s,dep,arr)
+        else:
+            title = s + " No FPL"
+        return [route_info,title,""]
     if len(s.split(" "))==2:
         get_routes = get_route(s)
         return [get_routes[0],get_routes[1],get_routes[2]]
@@ -670,7 +674,7 @@ class TodoApp(UserControl):
             self.tasks.controls = []
             metars_copy = metars.copy()
             metars.clear()
-            vatsim_online = data_source.get_vatsim_online()
+            data_source.update_vatsim_online()
             for key in metars_copy:
                 data_source.update(key)
                 new_task = Task(key, self.task_delete, self.task_clicked, [])
